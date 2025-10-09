@@ -69,7 +69,7 @@ The frontend connects to the backend API through the following configuration:
 **Location**: `frontend/src/services/api.ts`
 
 ```typescript
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://backend-app.calmforest-0d6fd79f.centralindia.azurecontainerapps.io/';
 ```
 
 **Required Environment Variable**:

@@ -1,0 +1,6 @@
+subscription_id = "4421688c-0a8d-4588-8dd0-338c5271d0af"
+resource_group_name="saja-rg"
+resource_group_location = "Central India"
+virtual_network_name="saja-vnet"
+subnet_name = "saja-subnet"
+db_password = "YourStrongPassword123!"
