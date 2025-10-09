@@ -2,7 +2,9 @@
 .env
 .env.local
 .env.*.local
-
+*.env
+envrironment.env
+environment.env.example
 # IDE
 .vscode/
 .idea/
