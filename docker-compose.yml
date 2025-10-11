@@ -1,0 +1,44 @@
+
+
+services:
+  database:
+    image: postgres:16
+    container_name: burger-db
+    environment:
+      POSTGRES_DB: burgerbuilder
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: sajaStrong!Passw0rd
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - burger-net
+
+  backend:
+    build: ./backend
+    container_name: burger-backend
+    env_file: ./environment.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - database
+    networks:
+      - burger-net
+
+  frontend:
+    build: ./frontend
+    container_name: burger-frontend
+    env_file: ./frontend/.env
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    networks:
+      - burger-net
+
+networks:
+  burger-net:
+
+volumes:
+  postgres_data:
