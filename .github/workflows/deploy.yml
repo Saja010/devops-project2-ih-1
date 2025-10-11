@@ -8,12 +8,16 @@ on:
   push:
     branches:
       - ci-cd
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
+      # ================================
+      # CHECKOUT CODE
+      # ================================
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -26,6 +30,12 @@ jobs:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
+
+      # ================================
+      # VERIFY AZ LOGIN
+      # ================================
+      - name: Verify Azure CLI Login
+        run: az account show
 
       # ================================
       # ACR LOGIN
@@ -63,25 +73,37 @@ jobs:
           docker push ${{ secrets.ACR_USERNAME }}.azurecr.io/frontend:latest
 
       # ================================
-      # TERRAFORM DEPLOY
+      # SETUP TERRAFORM
       # ================================
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.0
 
       - name: Terraform Init
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_acr_password: ${{ secrets.ACR_PASSWORD }}
         run: terraform -chdir=infra/terraform init
+
+      - name: Terraform Validate
+        run: terraform -chdir=infra/terraform validate
+
+      - name: Terraform Plan
+        env:
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
+        run: terraform -chdir=infra/terraform plan
 
       - name: Terraform Apply
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_acr_password: ${{ secrets.ACR_PASSWORD }}
         run: terraform -chdir=infra/terraform apply -auto-approve
