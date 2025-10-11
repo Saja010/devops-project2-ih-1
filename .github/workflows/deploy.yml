@@ -15,95 +15,80 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ================================
-      # CHECKOUT CODE
-      # ================================
+      # CHECKOUT
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ================================
-      # AZURE LOGIN
-      # ================================
+      # AZURE LOGIN (OIDC)
       - name: Log in to Azure
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
 
-      # ================================
-      # VERIFY AZ LOGIN
-      # ================================
       - name: Verify Azure CLI Login
         run: az account show
 
-      # ================================
-      # ACR LOGIN
-      # ================================
-      - name: Docker login to ACR
-        run: echo ${{ secrets.ACR_PASSWORD }} | docker login ${{ secrets.AZURE_CONTAINER_REGISTRY }} -u ${{ secrets.ACR_USERNAME }} --password-stdin
+      # DOCKER LOGIN
+      - name: Login to ACR
+        run: echo ${{ secrets.ACR_PASSWORD }} | docker login sajaregistry.azurecr.io -u ${{ secrets.ACR_USERNAME }} --password-stdin
 
-      # ================================
-      # BACKEND BUILD & PUSH
-      # ================================
-      - name: Build Backend with Maven
+      # BACKEND
+      - name: Build & Push Backend
         run: |
           cd backend
           mvn clean package -DskipTests
+          docker build -t sajaregistry.azurecr.io/backend:latest .
+          docker push sajaregistry.azurecr.io/backend:latest
 
-      - name: Build and Push Backend Docker image
-        run: |
-          cd backend
-          docker build -t ${{ secrets.ACR_USERNAME }}.azurecr.io/backend:latest .
-          docker push ${{ secrets.ACR_USERNAME }}.azurecr.io/backend:latest
-
-      # ================================
-      # FRONTEND BUILD & PUSH
-      # ================================
-      - name: Build Frontend with Node
+      # FRONTEND
+      - name: Build & Push Frontend
         run: |
           cd frontend
           npm install
           npm run build
+          docker build -t sajaregistry.azurecr.io/frontend:latest .
+          docker push sajaregistry.azurecr.io/frontend:latest
 
-      - name: Build and Push Frontend Docker image
-        run: |
-          cd frontend
-          docker build -t ${{ secrets.ACR_USERNAME }}.azurecr.io/frontend:latest .
-          docker push ${{ secrets.ACR_USERNAME }}.azurecr.io/frontend:latest
-
-      # ================================
-      # SETUP TERRAFORM
-      # ================================
+      # TERRAFORM
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.7.0
 
       - name: Terraform Init
+        working-directory: infra/terraform
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_acr_password: ${{ secrets.ACR_PASSWORD }}
-        run: terraform -chdir=infra/terraform init
+        run: terraform init
 
       - name: Terraform Validate
-        run: terraform -chdir=infra/terraform validate
+        working-directory: infra/terraform
+        run: terraform validate
 
       - name: Terraform Plan
+        working-directory: infra/terraform
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
-        run: terraform -chdir=infra/terraform plan
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        run: terraform plan
 
       - name: Terraform Apply
+        working-directory: infra/terraform
         env:
           ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
           ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
           TF_VAR_acr_password: ${{ secrets.ACR_PASSWORD }}
-        run: terraform -chdir=infra/terraform apply -auto-approve
+        run: terraform apply -auto-approve
