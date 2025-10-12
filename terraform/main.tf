@@ -18,7 +18,7 @@ provider "azurerm" {
 # 1️⃣ Resource Group
 # ====================================================
 resource "azurerm_resource_group" "rg" {
-  name     = "saja-rg-2"
+  name     = "saja-rg-"
   location = "Central India"
 }
 
@@ -26,7 +26,7 @@ resource "azurerm_resource_group" "rg" {
 # 2️⃣ Virtual Network + Subnets
 # ====================================================
 resource "azurerm_virtual_network" "vnet" {
-  name                = "saja-vnet2"
+  name                = "saja-vnet"
   address_space       = ["10.0.0.0/16"]
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
@@ -34,7 +34,7 @@ resource "azurerm_virtual_network" "vnet" {
 
 # Database Subnet
 resource "azurerm_subnet" "db_subnet" {
-  name                 = "database-subnet2"
+  name                 = "database-subnet"
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.1.0/24"]
@@ -55,7 +55,7 @@ resource "azurerm_subnet" "db_subnet" {
 
 # Container Apps Subnet
 resource "azurerm_subnet" "apps_subnet" {
-  name                 = "apps-subnet2"
+  name                 = "apps-subnet"
   resource_group_name  = azurerm_resource_group.rg.name
   virtual_network_name = azurerm_virtual_network.vnet.name
   address_prefixes     = ["10.0.2.0/23"]
@@ -83,7 +83,7 @@ resource "azurerm_private_dns_zone_virtual_network_link" "postgres_link" {
 # 4️⃣ PostgreSQL Flexible Server + DB
 # ====================================================
 resource "azurerm_postgresql_flexible_server" "db" {
-  name                   = "saja-postgres-db2"
+  name                   = "saja-postgres-db"
   resource_group_name    = azurerm_resource_group.rg.name
   location               = azurerm_resource_group.rg.location
   administrator_login    = "pgadmin"
@@ -106,7 +106,7 @@ resource "azurerm_postgresql_flexible_server" "db" {
 }
 
 resource "azurerm_postgresql_flexible_server_database" "appdb" {
-  name      = "burgerbuilder2"
+  name      = "burgerbuilder"
   server_id = azurerm_postgresql_flexible_server.db.id
   collation = "en_US.utf8"
   charset   = "UTF8"
@@ -116,7 +116,7 @@ resource "azurerm_postgresql_flexible_server_database" "appdb" {
 # 5️⃣ Azure Container Registry (ACR)
 # ====================================================
 resource "azurerm_container_registry" "acr" {
-  name                = "sajaregistry2"
+  name                = "sajaregistry"
   resource_group_name = azurerm_resource_group.rg.name
   location            = azurerm_resource_group.rg.location
   sku                 = "Basic"
@@ -127,7 +127,7 @@ resource "azurerm_container_registry" "acr" {
 # 6️⃣ Azure Container Apps Environment
 # ====================================================
 resource "azurerm_container_app_environment" "env" {
-  name                = "saja-aca-env2"
+  name                = "saja-aca-env"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -144,7 +144,7 @@ resource "azurerm_container_app_environment" "env" {
 # 7️⃣ Backend Container App
 # ====================================================
 resource "azurerm_container_app" "backend" {
-  name                         = "backend-app2"
+  name                         = "backend-app"
   resource_group_name          = azurerm_resource_group.rg.name
   container_app_environment_id = azurerm_container_app_environment.env.id
   revision_mode                = "Single"
@@ -229,7 +229,7 @@ resource "azurerm_container_app" "backend" {
 # 8️⃣ Frontend Container App
 # ====================================================
 resource "azurerm_container_app" "frontend" {
-  name                         = "frontend-app2"
+  name                         = "frontend-app"
   resource_group_name          = azurerm_resource_group.rg.name
   container_app_environment_id = azurerm_container_app_environment.env.id
   revision_mode                = "Single"

@@ -43,7 +43,7 @@ jobs:
   frontend:
     runs-on: ubuntu-latest
     name: Build & Push Frontend
-    needs: backend   # ← لن يبدأ إلا بعد نجاح backend job
+    needs: backend
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -67,9 +67,8 @@ jobs:
   terraform:
     runs-on: ubuntu-latest
     name: Terraform Infrastructure Deployment
-    needs: frontend   # ← لن يبدأ إلا بعد نجاح frontend job
+    needs: frontend
     permissions:
-      id-token: write
       contents: read
 
     steps:
@@ -81,12 +80,14 @@ jobs:
         with:
           terraform_version: 1.7.5
 
-      - name: Azure Login via OIDC
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
+      # ✅ Login using Service Principal (App Registration)
+      - name: Azure CLI Login
+        run: |
+          az login --service-principal \
+            -u ${{ secrets.AZURE_CLIENT_ID }} \
+            -p ${{ secrets.AZURE_CLIENT_SECRET }} \
+            --tenant ${{ secrets.AZURE_TENANT_ID }}
+          az account set --subscription ${{ secrets.ZURE_SUBSCRIPTION_ID }}
 
       - name: Terraform Init
         run: terraform init
@@ -99,17 +100,7 @@ jobs:
       - name: Terraform Plan
         run: terraform plan -out=tfplan
         working-directory: infra/terraform
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: true
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
         working-directory: infra/terraform
-        env:
-          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
-          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          ARM_USE_OIDC: true
