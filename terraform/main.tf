@@ -18,7 +18,7 @@ provider "azurerm" {
 # 1️⃣ Resource Group
 # ====================================================
 resource "azurerm_resource_group" "rg" {
-  name     = "saja-rg-"
+  name     = "saja-rg-1"
   location = "Central India"
 }
 
