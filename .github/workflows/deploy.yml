@@ -1,79 +1,109 @@
-permissions:
-  contents: read
-
-name: Full Deployment (Build + Push + Terraform) - Run with Secret Token
+name: Full Deployment Pipeline (Backend → Frontend → Terraform)
 
 on:
+  push:
+    branches: [ "ci-cd" ]
   workflow_dispatch:
 
-jobs:
-  build-push-and-terraform:
-    runs-on: ubuntu-latest
-    env:
-      ACR_HOST: sajaregistry.azurecr.io
+env:
+  ACR_HOST: sajaregistry.azurecr.io
 
+jobs:
+  # ===========================
+  # 1️⃣ Build & Push Backend
+  # ===========================
+  backend:
+    runs-on: ubuntu-latest
+    name: Build & Push Backend
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Mask access token
-        run: |
-          echo "::add-mask::${{ secrets.AZURE_ACCESS_TOKEN }}"
-
-      - name: Login to ACR
+      - name: Login to Azure Container Registry
         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
-      - name: Build & push backend
+      - name: Build backend image
         run: |
           cd backend
           mvn clean package -DskipTests
           docker build -t $ACR_HOST/backend:latest .
-          docker push $ACR_HOST/backend:latest
 
-      - name: Build & push frontend
+      - name: Push backend image
+        run: docker push $ACR_HOST/backend:latest
+
+  # ===========================
+  # 2️⃣ Build & Push Frontend
+  # ===========================
+  frontend:
+    runs-on: ubuntu-latest
+    name: Build & Push Frontend
+    needs: backend   # ← لن يبدأ إلا بعد نجاح backend job
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Login to Azure Container Registry
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+
+      - name: Build frontend image
         run: |
           cd frontend
           npm ci
           npm run build
           docker build -t $ACR_HOST/frontend:latest .
-          docker push $ACR_HOST/frontend:latest
 
-      - name: Azure login using access token
-        env:
-          AZ_TOKEN: ${{ secrets.AZURE_ACCESS_TOKEN }}
-          AZ_TENANT: ${{ secrets.AZURE_TENANT_ID }}
-          AZ_SUBSCRIPTION: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-        run: |
-          echo "$AZ_TOKEN" > /tmp/az_token.txt
-          az login --access-token "$(cat /tmp/az_token.txt)" --tenant "$AZ_TENANT"
-          az account set --subscription "$AZ_SUBSCRIPTION"
-          az account show
+      - name: Push frontend image
+        run: docker push $ACR_HOST/frontend:latest
+
+  # ===========================
+  # 3️⃣ Terraform Deploy Infra
+  # ===========================
+  terraform:
+    runs-on: ubuntu-latest
+    name: Terraform Infrastructure Deployment
+    needs: frontend   # ← لن يبدأ إلا بعد نجاح frontend job
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.7.5
+
+      - name: Azure Login via OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.ZURE_SUBSCRIPTION_ID }}
 
       - name: Terraform Init
+        run: terraform init
         working-directory: infra/terraform
-        env:
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-          TF_VAR_acr_password: ${{ secrets.ACR_PASSWORD }}
-        run: terraform init -input=false
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: infra/terraform
 
       - name: Terraform Plan
+        run: terraform plan -out=tfplan
         working-directory: infra/terraform
         env:
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-          TF_VAR_acr_password: ${{ secrets.ACR_PASSWORD }}
-        run: terraform plan -input=false -out=tfplan
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: true
 
       - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
         working-directory: infra/terraform
         env:
-          TF_VAR_db_password: ${{ secrets.DB_PASSWORD }}
-          TF_VAR_acr_password: ${{ secrets.ACR_PASSWORD }}
-        run: terraform apply -input=false -auto-approve tfplan
- 
-# trigger Sat Oct 11 22:04:29 +03 2025
-#يارب انه يشتغل 
+          ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          ARM_USE_OIDC: true
