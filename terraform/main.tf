@@ -64,6 +64,16 @@ resource "azurerm_subnet" "apps_subnet" {
 }
 
 # ====================================================
+#  Subnet for Application Gateway
+# ====================================================
+data "azurerm_subnet" "appgw_subnet" {
+  name                 = "appgateway-subnet"
+  virtual_network_name = "saja-vnet"
+  resource_group_name  = "saja-rg-1"
+}
+
+
+# ====================================================
 # 3️⃣ Private DNS Zone + Link
 # ====================================================
 resource "azurerm_private_dns_zone" "postgres" {
@@ -158,6 +168,7 @@ resource "azurerm_container_app" "backend" {
       percentage      = 100
     }
   }
+    
 
   template {
     container {
@@ -206,6 +217,8 @@ resource "azurerm_container_app" "backend" {
         value = "8080"
       }
     }
+    min_replicas = 1  
+    max_replicas = 5 
   }
 
   secret {
@@ -223,6 +236,10 @@ resource "azurerm_container_app" "backend" {
     azurerm_container_app_environment.env,
     azurerm_postgresql_flexible_server.db
   ]
+
+  
+    
+  
 }
 
 # ====================================================
@@ -254,9 +271,13 @@ resource "azurerm_container_app" "frontend" {
 
       env {
         name  = "VITE_API_BASE_URL"
-        value = "https://backend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"
+        value = "http://74.225.172.165" # Value should be App Gateway Public IP
+        # APP GW backend backend settings - change port from 8080
+        # APP GW Add health probes as they are seted now
       }
     }
+    min_replicas = 1
+    max_replicas = 5
   }
 
   secret {
@@ -271,4 +292,151 @@ resource "azurerm_container_app" "frontend" {
   }
 
   depends_on = [azurerm_container_app_environment.env]
+}
+
+
+# ====================================================
+# Public IP for Application Gateway
+# ====================================================
+resource "azurerm_public_ip" "appgw_public_ip" {
+  name                = "saja-appgw-ip"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  allocation_method   = "Static"
+  sku                 = "Standard"
+}
+
+
+# ====================================================
+# Application Gateway
+# ====================================================
+resource "azurerm_application_gateway" "appgw" {
+  name                = "saja-appgw"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+
+  sku {
+    name     = "Standard_v2"
+    tier     = "Standard_v2"
+    capacity = 1
+  }
+
+  ssl_policy {
+    policy_type = "Predefined"
+    policy_name = "AppGwSslPolicy20220101S"
+  }
+
+  gateway_ip_configuration {
+    name      = "appgw-ipcfg"
+    subnet_id = data.azurerm_subnet.appgw_subnet.id
+  }
+
+  frontend_port {
+    name = "frontendPort"
+    port = 80
+  }
+
+  frontend_ip_configuration {
+    name                 = "frontendPublicIP"
+    public_ip_address_id = azurerm_public_ip.appgw_public_ip.id
+  }
+
+  # ================================
+  # FRONTEND
+  # ================================
+  backend_address_pool {
+    name  = "frontend-pool"
+    fqdns = ["frontend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"]
+  }
+
+  backend_http_settings {
+    name                            = "frontend-http"
+    port                            = 80
+    protocol                        = "Http"
+    request_timeout                 = 30
+    pick_host_name_from_backend_address = true
+    cookie_based_affinity            = "Disabled"
+    probe_name                      = "frontend-health-probe"
+
+  }
+
+  # ================================
+  # BACKEND
+  # ================================
+  probe {
+    name                = "backend-health-probe"
+    protocol            = "Http"
+    port                = 80
+    path                = "/actuator/health"
+    host                = "backend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"
+    interval            = 30
+    timeout             = 10
+    unhealthy_threshold = 5
+    pick_host_name_from_backend_http_settings = true
+  match {
+  status_code = ["200-399"]
+}
+
+  }
+  probe {
+  name                = "frontend-health-probe"
+  protocol            = "Http"
+  port                = 80
+  path                = "/"
+  host                = "frontend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"
+  interval            = 30
+  timeout             = 10
+  unhealthy_threshold = 5
+  pick_host_name_from_backend_http_settings = true
+  match {
+    status_code = ["200-399"]
+  }
+}
+
+
+  backend_address_pool {
+    name  = "backend-pool"
+    fqdns = ["backend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"]
+  }
+
+  backend_http_settings {
+    name                            = "backend-http"
+    port                            = 80
+    protocol                        = "Http"
+    request_timeout                 = 60
+    pick_host_name_from_backend_address = true
+    cookie_based_affinity            = "Disabled"
+    probe_name                      = "backend-health-probe"
+  }
+
+  # ================================
+  # LISTENERS & ROUTING
+  # ================================
+  http_listener {
+    name                           = "appgw-listener"
+    frontend_ip_configuration_name = "frontendPublicIP"
+    frontend_port_name             = "frontendPort"
+    protocol                       = "Http"
+  }
+
+  request_routing_rule {
+    name                        = "routing-rule"
+    rule_type                   = "PathBasedRouting"
+    http_listener_name           = "appgw-listener"
+    priority                     = 100
+    url_path_map_name             = "urlmap"
+  }
+
+  url_path_map {
+    name                               = "urlmap"
+    default_backend_address_pool_name  = "frontend-pool"
+    default_backend_http_settings_name = "frontend-http"
+
+    path_rule {
+      name                       = "api-path"
+      paths                      = ["/api/*"]
+      backend_address_pool_name  = "backend-pool"
+      backend_http_settings_name = "backend-http"
+    }
+  }
 }

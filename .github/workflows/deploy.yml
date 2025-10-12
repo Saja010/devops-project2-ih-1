@@ -1,106 +1,105 @@
-name: Full Deployment Pipeline (Backend → Frontend → Terraform)
+# name: Full Deployment Pipeline (Backend → Frontend → Terraform)
 
-on:
-  push:
-    branches: [ "ci-cd" ]
-  workflow_dispatch:
+# on:
+#   push:
+#     branches: [ "ci-cd" ]
+#   workflow_dispatch:
 
-env:
-  ACR_HOST: sajaregistry.azurecr.io
+# env:
+#   ACR_HOST: sajaregistry.azurecr.io
 
-jobs:
-  # ===========================
-  # 1️⃣ Build & Push Backend
-  # ===========================
-  backend:
-    runs-on: ubuntu-latest
-    name: Build & Push Backend
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+# jobs:
+#   # ===========================
+#   # 1️⃣ Build & Push Backend
+#   # ===========================
+#   backend:
+#     runs-on: ubuntu-latest
+#     name: Build & Push Backend
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '21'
+#       - name: Set up JDK 21
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: 'temurin'
+#           java-version: '21'
 
-      - name: Login to Azure Container Registry
-        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+#       - name: Login to Azure Container Registry
+#         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
-      - name: Build backend image
-        run: |
-          cd backend
-          mvn clean package -DskipTests
-          docker build -t $ACR_HOST/backend:latest .
+#       - name: Build backend image
+#         run: |
+#           cd backend
+#           mvn clean package -DskipTests
+#           docker build -t $ACR_HOST/backend:latest .
 
-      - name: Push backend image
-        run: docker push $ACR_HOST/backend:latest
+#       - name: Push backend image
+#         run: docker push $ACR_HOST/backend:latest
 
-  # ===========================
-  # 2️⃣ Build & Push Frontend
-  # ===========================
-  frontend:
-    runs-on: ubuntu-latest
-    name: Build & Push Frontend
-    needs: backend
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+#   # ===========================
+#   # 2️⃣ Build & Push Frontend
+#   # ===========================
+#   frontend:
+#     runs-on: ubuntu-latest
+#     name: Build & Push Frontend
+#     needs: backend
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      - name: Login to Azure Container Registry
-        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+#       - name: Login to Azure Container Registry
+#         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
-      - name: Build frontend image
-        run: |
-          cd frontend
-          npm ci
-          npm run build
-          docker build -t $ACR_HOST/frontend:latest .
+#       - name: Build frontend image
+#         run: |
+#           cd frontend
+#           npm ci
+#           npm run build
+#           docker build -t $ACR_HOST/frontend:latest .
 
-      - name: Push frontend image
-        run: docker push $ACR_HOST/frontend:latest
+#       - name: Push frontend image
+#         run: docker push $ACR_HOST/frontend:latest
 
-  # ===========================
-  # 3️⃣ Terraform Deploy Infra
-  # ===========================
-  terraform:
-    runs-on: ubuntu-latest
-    name: Terraform Infrastructure Deployment
-    needs: frontend
-    permissions:
-      contents: read
+#   # ===========================
+#   # 3️⃣ Terraform Deploy Infra
+#   # ===========================
+#   terraform:
+#     runs-on: ubuntu-latest
+#     name: Terraform Infrastructure Deployment
+#     needs: frontend
+#     permissions:
+#       contents: read
+#     env:
+#       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+#       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+#       ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+#       ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+#       TF_VAR_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+#       TF_VAR_ACR_PASSWORD: ${{ secrets.ACR_DOCKER_PASSWORD }}
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.7.5
+#     steps:
+#       - name: Checkout repository
+#         uses: actions/checkout@v4
 
-      # ✅ Login using Service Principal (App Registration)
-      - name: Azure CLI Login
-        run: |
-          az login --service-principal \
-            -u ${{ secrets.AZURE_CLIENT_ID }} \
-            -p ${{ secrets.AZURE_CLIENT_SECRET }} \
-            --tenant ${{ secrets.AZURE_TENANT_ID }}
-          az account set --subscription ${{ secrets.ZURE_SUBSCRIPTION_ID }}
+#       - name: Setup Terraform
+#         uses: hashicorp/setup-terraform@v3
+#         with:
+#           terraform_version: 1.7.5
 
-      - name: Terraform Init
-        run: terraform init
-        working-directory: infra/terraform
+#       - name: Terraform Init
+#         run: terraform init
+#         working-directory: infra/terraform
 
-      - name: Terraform Validate
-        run: terraform validate
-        working-directory: infra/terraform
+#       - name: Terraform Validate
+#         run: terraform validate
+#         working-directory: infra/terraform
 
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-        working-directory: infra/terraform
+#       - name: Terraform Plan
+#         run: terraform plan -out=tfplan
+#         working-directory: infra/terraform
 
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
-        working-directory: infra/terraform
+#       - name: Terraform Apply
+#         run: terraform apply -auto-approve tfplan
+#         working-directory: infra/terraform
