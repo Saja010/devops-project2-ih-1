@@ -129,7 +129,7 @@ jobs:
         run: |
           cd frontend
           npm ci
-          npm run build
+          VITE_API_BASE_URL="http://74.225.172.165" npm run build
 
       - name: Build frontend image
         run: |
