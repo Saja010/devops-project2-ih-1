@@ -20,7 +20,7 @@ env:
 jobs:
   # ======================================================
   # 1️⃣ INFRASTRUCTURE DEPLOYMENT (TERRAFORM)
-  # ======================================================++
+  # ======================================================
   infra:
     runs-on: ubuntu-latest
     steps:
@@ -28,7 +28,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Azure Login
-        uses: azure/login@v1.4.3
+        uses: azure/login@v2
         with:
           client-id: ${{ secrets.ARM_CLIENT_ID }}
           tenant-id: ${{ secrets.ARM_TENANT_ID }}
@@ -41,13 +41,13 @@ jobs:
           terraform_version: 1.7.5
 
       - name: Terraform Init
-        run: cd infra/terraform && terraform init
+        run: cd terraform && terraform init
 
       - name: Terraform Plan
-        run: cd infra/terraform && terraform plan -out=tfplan
+        run: cd terraform && terraform plan -out=tfplan
 
       - name: Terraform Apply
-        run: cd infra/terraform && terraform apply -auto-approve tfplan
+        run: cd terraform && terraform apply -auto-approve tfplan
 
   # ======================================================
   # 2️⃣ BACKEND DEPLOYMENT (JAVA + DOCKER + ACR)
@@ -70,7 +70,7 @@ jobs:
 
       - name: Build backend image
         run: |
-          cd apps/backend
+          cd backend
           mvn clean package -DskipTests
           docker build -t $ACR_HOST/backend:latest .
 
@@ -99,13 +99,13 @@ jobs:
 
       - name: Build frontend app
         run: |
-          cd apps/frontend
+          cd frontend
           npm ci
           npm run build
 
       - name: Build frontend image
         run: |
-          cd apps/frontend
+          cd frontend
           docker build -t $ACR_HOST/frontend:latest .
 
       - name: Push frontend image
