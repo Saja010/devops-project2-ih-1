@@ -1,105 +1,119 @@
-# name: Full Deployment Pipeline (Backend → Frontend → Terraform)
+name: Full Deployment (Infra + Backend + Frontend)
 
-# on:
-#   push:
-#     branches: [ "ci-cd" ]
-#   workflow_dispatch:
+on:
+  push:
+    branches:
+      - workflow
+  workflow_dispatch:
 
-# env:
-#   ACR_HOST: sajaregistry.azurecr.io
+permissions:
+  id-token: write
+  contents: read
 
-# jobs:
-#   # ===========================
-#   # 1️⃣ Build & Push Backend
-#   # ===========================
-#   backend:
-#     runs-on: ubuntu-latest
-#     name: Build & Push Backend
-#     steps:
-#       - name: Checkout repository
-#         uses: actions/checkout@v4
+env:
+  ACR_HOST: sajaregistry.azurecr.io
+  RESOURCE_GROUP: saja-rg-1
+  BACKEND_APP: backend-app
+  FRONTEND_APP: frontend-app
+  LOCATION: centralindia
 
-#       - name: Set up JDK 21
-#         uses: actions/setup-java@v4
-#         with:
-#           distribution: 'temurin'
-#           java-version: '21'
+jobs:
+  # ======================================================
+  # 1️⃣ INFRASTRUCTURE DEPLOYMENT (TERRAFORM)
+  # ======================================================
+  infra:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-#       - name: Login to Azure Container Registry
-#         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.ARM_CLIENT_ID }}
+          tenant-id: ${{ secrets.ARM_TENANT_ID }}
+          subscription-id: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+          client-secret: ${{ secrets.ARM_CLIENT_SECRET }}
 
-#       - name: Build backend image
-#         run: |
-#           cd backend
-#           mvn clean package -DskipTests
-#           docker build -t $ACR_HOST/backend:latest .
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.7.5
 
-#       - name: Push backend image
-#         run: docker push $ACR_HOST/backend:latest
+      - name: Terraform Init
+        run: cd terraform && terraform init
 
-#   # ===========================
-#   # 2️⃣ Build & Push Frontend
-#   # ===========================
-#   frontend:
-#     runs-on: ubuntu-latest
-#     name: Build & Push Frontend
-#     needs: backend
-#     steps:
-#       - name: Checkout repository
-#         uses: actions/checkout@v4
+      - name: Terraform Plan
+        run: cd terraform && terraform plan -out=tfplan
 
-#       - name: Login to Azure Container Registry
-#         run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
+      - name: Terraform Apply
+        run: cd terraform && terraform apply -auto-approve tfplan
 
-#       - name: Build frontend image
-#         run: |
-#           cd frontend
-#           npm ci
-#           npm run build
-#           docker build -t $ACR_HOST/frontend:latest .
+  # ======================================================
+  # 2️⃣ BACKEND DEPLOYMENT (JAVA + DOCKER + ACR)
+  # ======================================================
+  backend:
+    runs-on: ubuntu-latest
+    needs: infra
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-#       - name: Push frontend image
-#         run: docker push $ACR_HOST/frontend:latest
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
 
-#   # ===========================
-#   # 3️⃣ Terraform Deploy Infra
-#   # ===========================
-#   terraform:
-#     runs-on: ubuntu-latest
-#     name: Terraform Infrastructure Deployment
-#     needs: frontend
-#     permissions:
-#       contents: read
-#     env:
-#       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
-#       ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
-#       ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
-#       ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
-#       TF_VAR_DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-#       TF_VAR_ACR_PASSWORD: ${{ secrets.ACR_DOCKER_PASSWORD }}
+      - name: Login to ACR
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
+      - name: Build backend image
+        run: |
+          cd backend
+          mvn clean package -DskipTests
+          docker build -t $ACR_HOST/backend:latest .
 
-#     steps:
-#       - name: Checkout repository
-#         uses: actions/checkout@v4
+      - name: Push backend image
+        run: docker push $ACR_HOST/backend:latest
 
-#       - name: Setup Terraform
-#         uses: hashicorp/setup-terraform@v3
-#         with:
-#           terraform_version: 1.7.5
+      - name: Deploy backend container app
+        run: |
+          az containerapp update \
+            --name $BACKEND_APP \
+            --resource-group $RESOURCE_GROUP \
+            --image $ACR_HOST/backend:latest
 
-#       - name: Terraform Init
-#         run: terraform init
-#         working-directory: infra/terraform
+  # ======================================================
+  # 3️⃣ FRONTEND DEPLOYMENT (REACT + VITE + DOCKER)
+  # ======================================================
+  frontend:
+    runs-on: ubuntu-latest
+    needs: backend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-#       - name: Terraform Validate
-#         run: terraform validate
-#         working-directory: infra/terraform
+      - name: Login to ACR
+        run: echo "${{ secrets.ACR_PASSWORD }}" | docker login $ACR_HOST -u "${{ secrets.ACR_USERNAME }}" --password-stdin
 
-#       - name: Terraform Plan
-#         run: terraform plan -out=tfplan
-#         working-directory: infra/terraform
+      - name: Build frontend app
+        run: |
+          cd frontend
+          npm ci
+          npm run build
 
-#       - name: Terraform Apply
-#         run: terraform apply -auto-approve tfplan
-#         working-directory: infra/terraform
+      - name: Build frontend image
+        run: |
+          cd frontend
+          docker build -t $ACR_HOST/frontend:latest .
+
+      - name: Push frontend image
+        run: docker push $ACR_HOST/frontend:latest
+
+      - name: Deploy frontend container app
+        run: |
+          az containerapp update \
+            --name $FRONTEND_APP \
+            --resource-group $RESOURCE_GROUP \
+            --image $ACR_HOST/frontend:latest

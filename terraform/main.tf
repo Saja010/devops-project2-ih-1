@@ -293,7 +293,7 @@ resource "azurerm_container_app" "frontend" {
 
       env {
         name  = "VITE_API_BASE_URL"
-        value = "74.225.172.165" # Value should be App Gateway Public IP
+        value = "http://74.225.172.165" # Value should be App Gateway Public IP
         # APP GW backend backend settings - change port from 8080
         # APP GW Add health probes as they are seted now
       }
