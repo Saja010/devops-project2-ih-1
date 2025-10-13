@@ -38,12 +38,18 @@ jobs:
 
       - name: Terraform Init
         run: cd terraform && terraform init
+        env:
+          ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
 
       - name: Terraform Plan
         run: cd terraform && terraform plan -out=tfplan
+        env:
+          ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
 
       - name: Terraform Apply
         run: cd terraform && terraform apply -auto-approve tfplan
+        env:
+          ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
 
   # ======================================================
   # 2️⃣ BACKEND DEPLOYMENT (JAVA + DOCKER + ACR)

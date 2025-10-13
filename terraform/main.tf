@@ -1,11 +1,16 @@
 terraform {
+  backend "azurerm" {
+  resource_group_name  = "saja-rg-1"
+  storage_account_name = "sajaterraformstate"
+  container_name       = "tfstate"
+  key                  = "infra.tfstate"
+}
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
       version = "~> 3.115.0"
     }
   }
-
   required_version = ">= 1.7.0"
 }
 
