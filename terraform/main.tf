@@ -63,14 +63,8 @@ resource "azurerm_subnet" "apps_subnet" {
   depends_on = [azurerm_virtual_network.vnet]
 }
 
-# ====================================================
-#  Subnet for Application Gateway
-# ====================================================
-data "azurerm_subnet" "appgw_subnet" {
-  name                 = "appgateway-subnet"
-  virtual_network_name = "saja-vnet"
-  resource_group_name  = "saja-rg-1"
-}
+
+
 
 
 # ====================================================
@@ -142,13 +136,40 @@ resource "azurerm_container_app_environment" "env" {
   resource_group_name = azurerm_resource_group.rg.name
 
   infrastructure_subnet_id        = azurerm_subnet.apps_subnet.id
-  internal_load_balancer_enabled  = false
+  internal_load_balancer_enabled  = true
+  # set to true and configure private DNS zone with wildcard (*.container_apps_environment_fqdn) point to container apps env private IPv4
 
   depends_on = [
     azurerm_subnet.apps_subnet,
     azurerm_private_dns_zone_virtual_network_link.postgres_link
   ]
 }
+
+# ====================================================
+# Private DNS Zone for Container Apps Environment
+# ====================================================
+resource "azurerm_private_dns_zone" "containerapps_zone" {
+  name                = azurerm_container_app_environment.env.default_domain
+  resource_group_name = azurerm_resource_group.rg.name
+}
+
+
+resource "azurerm_private_dns_zone_virtual_network_link" "containerapps_link" {
+  name                  = "containerapps-dnslink"
+  private_dns_zone_name = azurerm_private_dns_zone.containerapps_zone.name
+  virtual_network_id    = azurerm_virtual_network.vnet.id
+  resource_group_name   = azurerm_resource_group.rg.name
+}
+# Wildcard record to route all container apps to the private environment IP
+resource "azurerm_private_dns_a_record" "containerapps_wildcard" {
+  name                = "*"
+  zone_name           = azurerm_private_dns_zone.containerapps_zone.name
+  resource_group_name = azurerm_resource_group.rg.name
+  ttl                 = 300
+  records             = [azurerm_container_app_environment.env.static_ip_address]
+}
+
+
 
 # ====================================================
 # 7️⃣ Backend Container App
@@ -162,6 +183,7 @@ resource "azurerm_container_app" "backend" {
   ingress {
     external_enabled = true
     target_port      = 8080
+    allow_insecure_connections = true
 
     traffic_weight {
       latest_revision = true
@@ -254,7 +276,7 @@ resource "azurerm_container_app" "frontend" {
   ingress {
     external_enabled           = true
     target_port                = 80
-    allow_insecure_connections = false
+    allow_insecure_connections = true
 
     traffic_weight {
       latest_revision = true
@@ -265,13 +287,13 @@ resource "azurerm_container_app" "frontend" {
   template {
     container {
       name   = "frontend"
-      image  = "sajaregistry.azurecr.io/frontend:latest"
+      image  = "sajaregistry.azurecr.io/frontend:3.0.0"
       cpu    = 0.5
       memory = "1.0Gi"
 
       env {
         name  = "VITE_API_BASE_URL"
-        value = "http://74.225.172.165" # Value should be App Gateway Public IP
+        value = "74.225.172.165" # Value should be App Gateway Public IP
         # APP GW backend backend settings - change port from 8080
         # APP GW Add health probes as they are seted now
       }
@@ -294,6 +316,17 @@ resource "azurerm_container_app" "frontend" {
   depends_on = [azurerm_container_app_environment.env]
 }
 
+
+# ====================================================
+#  Subnet for Application Gateway
+# ====================================================
+
+resource "azurerm_subnet" "appgw_subnet" {
+  name                 = "appgateway-subnet"
+  resource_group_name  = azurerm_resource_group.rg.name
+  virtual_network_name = azurerm_virtual_network.vnet.name
+  address_prefixes     = ["10.0.10.0/24"]
+}
 
 # ====================================================
 # Public IP for Application Gateway
@@ -328,7 +361,7 @@ resource "azurerm_application_gateway" "appgw" {
 
   gateway_ip_configuration {
     name      = "appgw-ipcfg"
-    subnet_id = data.azurerm_subnet.appgw_subnet.id
+    subnet_id = azurerm_subnet.appgw_subnet.id
   }
 
   frontend_port {
@@ -346,9 +379,9 @@ resource "azurerm_application_gateway" "appgw" {
   # ================================
   backend_address_pool {
     name  = "frontend-pool"
-    fqdns = ["frontend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"]
-  }
-
+    fqdns = ["frontend-app.${azurerm_container_app_environment.env.default_domain}"]
+  }#fqdns = ["frontend-app.{azurerm_container_app.env.default.fqdn}"]
+  # terraform destroy --target=application gateway
   backend_http_settings {
     name                            = "frontend-http"
     port                            = 80
@@ -368,7 +401,7 @@ resource "azurerm_application_gateway" "appgw" {
     protocol            = "Http"
     port                = 80
     path                = "/actuator/health"
-    host                = "backend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"
+    #host                = "backend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"
     interval            = 30
     timeout             = 10
     unhealthy_threshold = 5
@@ -383,7 +416,7 @@ resource "azurerm_application_gateway" "appgw" {
   protocol            = "Http"
   port                = 80
   path                = "/"
-  host                = "frontend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"
+  #host                = "frontend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"
   interval            = 30
   timeout             = 10
   unhealthy_threshold = 5
@@ -396,7 +429,7 @@ resource "azurerm_application_gateway" "appgw" {
 
   backend_address_pool {
     name  = "backend-pool"
-    fqdns = ["backend-app.icydesert-966b86df.centralindia.azurecontainerapps.io"]
+    fqdns = ["backend-app.${azurerm_container_app_environment.env.default_domain}"]
   }
 
   backend_http_settings {
