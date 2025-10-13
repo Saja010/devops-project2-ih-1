@@ -23,6 +23,10 @@ jobs:
   # ======================================================
   infra:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+        shell: bash
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -42,12 +46,12 @@ jobs:
           ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
 
       - name: Terraform Plan
-        run: cd terraform && terraform plan -out=tfplan
+        run: terraform plan -no-color -input=false -lock=false -out terraform.tfplan
         env:
           ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
 
       - name: Terraform Apply
-        run: cd terraform && terraform apply -auto-approve tfplan
+        run: terraform apply -auto-approve=true -lock-timeout=30s -input=false terraform.tfplan
         env:
           ARM_ACCESS_KEY: ${{ secrets.ARM_ACCESS_KEY }}
 
