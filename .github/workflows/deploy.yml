@@ -3,7 +3,7 @@ name: Full Deployment (Infra + Backend + Frontend)
 on:
   push:
     branches:
-      - ci-cd
+      - workflow
   workflow_dispatch:
 
 permissions:
