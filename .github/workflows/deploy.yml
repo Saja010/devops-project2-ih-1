@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Azure Login
-        uses: azure/login@v1
+        uses: azure/login@v1.4.6
         with:
           auth-type: SERVICE_PRINCIPAL
           client-id: ${{ secrets.ARM_CLIENT_ID }}
